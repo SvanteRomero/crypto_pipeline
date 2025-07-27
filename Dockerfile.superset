@@ -1,0 +1,13 @@
+# Filename: Dockerfile.superset
+
+# Start from the official Superset image
+FROM apache/superset:latest-dev
+
+# Switch to the root user to install packages
+USER root
+
+# Install the PostgreSQL driver and Pillow for screenshots
+RUN pip install psycopg2-binary Pillow
+
+# Switch back to the non-privileged superset user
+USER superset

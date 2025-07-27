@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Environment files
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+
+# Data files
+*.csv
+*.tsv
+*.xls
+*.xlsx
+*.db
+*.sqlite
+*.sqlite3
+
+# Build
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Other
+*.bak
+*.swp
+*.tmp
+*.~*

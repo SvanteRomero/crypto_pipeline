@@ -1,0 +1,156 @@
+# Filename: docker-compose.yaml
+version: '3.8'
+
+# This section defines common settings for all Airflow services to avoid repetition.
+x-airflow-common:
+  &airflow-common
+  image: apache/airflow:2.8.1
+  environment:
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+
+# This section defines common settings for Superset services.
+x-superset-common:
+  &superset-common
+  image: apache/superset
+  build:
+    context: .
+    dockerfile: Dockerfile.superset
+  environment:
+    - SUPERSET_CONFIG_PATH=/app/superset_config.py
+    - SUPERSET_SECRET_KEY=aVeryStrongAndSecureSecretKey12345!
+    - DB_HOST=postgres-superset
+    - DB_PORT=5432
+    - DB_USER=superset
+    - DB_PASS=superset
+    - DB_NAME=superset
+  volumes:
+    - ./superset_config.py:/app/superset_config.py # Mount the config file
+
+services:
+  # Airflow's metadata database
+  postgres-airflow:
+    image: postgres:13
+    container_name: postgres-airflow
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # The data warehouse that your DAGs will write to and Superset will read from
+  postgres-crypto-dw:
+    image: postgres:13
+    container_name: postgres-crypto-dw
+    environment:
+      - POSTGRES_USER=crypto_user
+      - POSTGRES_PASSWORD=crypto_password
+      - POSTGRES_DB=crypto_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - crypto_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "crypto_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # NEW: Superset's metadata database
+  postgres-superset:
+    image: postgres:13
+    container_name: postgres-superset
+    environment:
+      - POSTGRES_USER=superset
+      - POSTGRES_PASSWORD=superset
+      - POSTGRES_DB=superset
+    ports:
+      - "5434:5432" # Use a different host port to avoid conflicts
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "superset"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Airflow initialization service
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        pip install apache-airflow-providers-postgres pandas requests && \
+        airflow db init && \
+        airflow users create --role Admin --username admin --password admin --email admin@example.com --firstname Admin --lastname User && \
+        airflow connections add 'postgres_crypto_dw_conn' --conn-type 'postgres' --conn-host 'postgres-crypto-dw' --conn-login 'crypto_user' --conn-password 'crypto_password' --conn-schema 'crypto_db' --conn-port 5432
+    depends_on:
+      postgres-airflow:
+        condition: service_healthy
+      postgres-crypto-dw:
+        condition: service_healthy
+
+  # Airflow webserver service
+  airflow-webserver:
+    <<: *airflow-common
+    command: airflow webserver
+    ports:
+      - "8080:8080"
+    container_name: airflow_webserver
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # Airflow scheduler service
+  airflow-scheduler:
+    <<: *airflow-common
+    command: airflow scheduler
+    container_name: airflow_scheduler
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # NEW: Superset initialization service
+  superset-init:
+    <<: *superset-common # Use the common superset settings
+    container_name: superset_init
+    command: >
+      bash -c "
+        pip install psycopg2-binary && \
+        superset fab create-admin --username admin --firstname Superset --lastname Admin --email admin@superset.com --password admin && \
+        superset db upgrade && \
+        superset init
+      "
+    depends_on:
+      postgres-superset:
+        condition: service_healthy
+
+  # UPDATED: Superset webserver service
+  superset:
+    <<: *superset-common # Use the common superset settings
+    container_name: superset
+    command: superset run -h 0.0.0.0 -p 8088 --with-threads --reload --debugger
+    ports:
+      - "8088:8088"
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully # Wait for init to finish
+      postgres-crypto-dw: # Also depends on the data source
+        condition: service_healthy
+
+volumes:
+  crypto_data: {}
