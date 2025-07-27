@@ -6,7 +6,7 @@ x-airflow-common:
   &airflow-common
   image: apache/airflow:2.8.1
   environment:
-    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER_AIRFLOW}:${POSTGRES_PASSWORD_AIRFLOW}@postgres-airflow:5432/${POSTGRES_DB_AIRFLOW}
     - AIRFLOW__CORE__EXECUTOR=LocalExecutor
     - AIRFLOW__CORE__LOAD_EXAMPLES=False
     - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
@@ -18,18 +18,18 @@ x-airflow-common:
 # This section defines common settings for Superset services.
 x-superset-common:
   &superset-common
-  image: apache/superset
+  image: apache/superset:2.1.0 # Pinned to a specific version
   build:
     context: .
     dockerfile: Dockerfile.superset
   environment:
     - SUPERSET_CONFIG_PATH=/app/superset_config.py
-    - SUPERSET_SECRET_KEY=aVeryStrongAndSecureSecretKey12345!
+    - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY}
     - DB_HOST=postgres-superset
     - DB_PORT=5432
-    - DB_USER=superset
-    - DB_PASS=superset
-    - DB_NAME=superset
+    - DB_USER=${POSTGRES_USER_SUPERSET}
+    - DB_PASS=${POSTGRES_PASSWORD_SUPERSET}
+    - DB_NAME=${POSTGRES_DB_SUPERSET}
   volumes:
     - ./superset_config.py:/app/superset_config.py # Mount the config file
 
@@ -39,13 +39,13 @@ services:
     image: postgres:13
     container_name: postgres-airflow
     environment:
-      - POSTGRES_USER=airflow
-      - POSTGRES_PASSWORD=airflow
-      - POSTGRES_DB=airflow
+      - POSTGRES_USER=${POSTGRES_USER_AIRFLOW}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_AIRFLOW}
+      - POSTGRES_DB=${POSTGRES_DB_AIRFLOW}
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER_AIRFLOW}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -55,15 +55,15 @@ services:
     image: postgres:13
     container_name: postgres-crypto-dw
     environment:
-      - POSTGRES_USER=crypto_user
-      - POSTGRES_PASSWORD=crypto_password
-      - POSTGRES_DB=crypto_db
+      - POSTGRES_USER=${POSTGRES_USER_CRYPTO}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_CRYPTO}
+      - POSTGRES_DB=${POSTGRES_DB_CRYPTO}
     ports:
       - "5433:5432"
     volumes:
       - crypto_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "crypto_user"]
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER_CRYPTO}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -73,13 +73,13 @@ services:
     image: postgres:13
     container_name: postgres-superset
     environment:
-      - POSTGRES_USER=superset
-      - POSTGRES_PASSWORD=superset
-      - POSTGRES_DB=superset
+      - POSTGRES_USER=${POSTGRES_USER_SUPERSET}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_SUPERSET}
+      - POSTGRES_DB=${POSTGRES_DB_SUPERSET}
     ports:
       - "5434:5432" # Use a different host port to avoid conflicts
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "superset"]
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER_SUPERSET}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -94,8 +94,8 @@ services:
       - |
         pip install apache-airflow-providers-postgres pandas requests && \
         airflow db init && \
-        airflow users create --role Admin --username admin --password admin --email admin@example.com --firstname Admin --lastname User && \
-        airflow connections add 'postgres_crypto_dw_conn' --conn-type 'postgres' --conn-host 'postgres-crypto-dw' --conn-login 'crypto_user' --conn-password 'crypto_password' --conn-schema 'crypto_db' --conn-port 5432
+        airflow users create --role Admin --username admin --password ${AIRFLOW_ADMIN_PASSWORD} --email admin@example.com --firstname Admin --lastname User && \
+        airflow connections add 'postgres_crypto_dw_conn' --conn-type 'postgres' --conn-host 'postgres-crypto-dw' --conn-login '${POSTGRES_USER_CRYPTO}' --conn-password '${POSTGRES_PASSWORD_CRYPTO}' --conn-schema '${POSTGRES_DB_CRYPTO}' --conn-port 5432
     depends_on:
       postgres-airflow:
         condition: service_healthy
@@ -131,7 +131,7 @@ services:
     command: >
       bash -c "
         pip install psycopg2-binary && \
-        superset fab create-admin --username admin --firstname Superset --lastname Admin --email admin@superset.com --password admin && \
+        superset fab create-admin --username admin --firstname Superset --lastname Admin --email admin@superset.com --password ${SUPERSET_ADMIN_PASSWORD} && \
         superset db upgrade && \
         superset init
       "
