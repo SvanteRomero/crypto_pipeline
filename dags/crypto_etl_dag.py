@@ -1,10 +1,10 @@
 import json
 import pandas as pd
-import requests
+import requests # type: ignore
 from datetime import datetime
 
-from airflow.decorators import dag, task
-from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.decorators import dag, task # type: ignore
+from airflow.providers.postgres.hooks.postgres import PostgresHook # type: ignore
 
 @dag(
     dag_id='crypto_market_etl_pipeline',
